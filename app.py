@@ -69,7 +69,7 @@ if user_prompt := st.chat_input("Ask a question or explain the uploaded photo...
         with st.spinner("Solving step-by-step..."):
             try:
                 response = client.models.generate_content(
-                  model="gemini-2.5-flash",
+                 model="gemini-3.6-flash",
                     contents=contents,
                     config={"system_instruction": system_instruction}
                 )
