@@ -1,8 +1,10 @@
 import os
+import time
 import streamlit as st
 from PIL import Image
 from google import genai
 from audio_recorder_streamlit import audio_recorder
+from fpdf import FPDF
 
 # 1. Page Configuration
 st.set_page_config(
@@ -11,30 +13,41 @@ st.set_page_config(
     layout="centered"
 )
 
-# 2. Authentic UI Custom Styling (Gemini / Claude Inspired)
+# 2. Styling
 st.markdown("""
 <style>
     .stApp {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
-    
-    /* Clean Pill-Style Buttons for Prompts */
-    .stButton > button {
-        border-radius: 20px;
-        font-weight: 500;
-        transition: all 0.2s ease;
-    }
-    .stButton > button:hover {
-        border-color: #2563EB;
-        color: #2563EB;
-    }
-
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
-# 3. Header & Logo Branding
+# Helper Function to Generate PDF File
+def generate_pdf(messages):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, "PhysiMath AI - Study Notes", ln=True, align='C')
+    pdf.set_font("Arial", 'I', 10)
+    pdf.cell(0, 8, "Official Exam Preparation Notes", ln=True, align='C')
+    pdf.ln(5)
+    
+    pdf.set_font("Arial", size=11)
+    for msg in messages:
+        role = "Student Question:" if msg["role"] == "user" else "PhysiMath Solution:"
+        pdf.set_font("Arial", 'B', 11)
+        pdf.cell(0, 6, role, ln=True)
+        pdf.set_font("Arial", size=10)
+        # Encode string to handle standard symbols safely
+        clean_text = msg["content"].encode('latin-1', 'replace').decode('latin-1')
+        pdf.multi_cell(0, 6, clean_text)
+        pdf.ln(4)
+        
+    return pdf.output(dest='S').encode('latin-1')
+
+# 3. Branding Header
 col1, col2 = st.columns([1, 4])
 with col1:
     if os.path.exists("logo.png"):
@@ -49,21 +62,7 @@ with col2:
 
 st.divider()
 
-# 4. Feature Showcase Banner
-with st.expander(":material/stars: **Welcome to PhysiMath AI (Platform Capabilities)**", expanded=False):
-    st.markdown("""
-    **PhysiMath AI** is an authentic, all-in-one academic solver designed to help students master STEM concepts and prepare for competitive entrance examinations.
-
-    #### 🌟 Key Platform Capabilities
-    * **📚 10-Year Past Paper Access:** Practice board exam questions across **9th–12th (ICS, FSC Pre-Engineering, FSC Pre-Medical)**.
-    * **💡 Hint-First & Adaptive Practice:** Get step-by-step hints before full solutions to build conceptual mastery.
-    * **📸 Attachment Menu (`+`):** Upload textbook pages, capture direct camera snapshots, or record audio queries safely.
-    * **🧪 STEM Reference Sheet:** Quick lookup for core physics constants and mathematical identities.
-    * **📥 Download Study Notes:** Export your solved chat history directly as a study guide.
-    * **🎯 Global Exam Support:** Specialized modes covering **TOLC-I, CEnT-S, CSCA, SAT, CA, ECAT, MDCAT, and GRE/GMAT**.
-    """)
-
-# 5. Sidebar Navigation & Features
+# 4. Sidebar Exam Settings & 10-Year Past Papers
 st.sidebar.header("⚙️ Exam & Study Settings")
 
 exam_mode = st.sidebar.selectbox(
@@ -96,22 +95,7 @@ if st.sidebar.button("Fetch Past Papers", use_container_width=True):
 
 st.sidebar.divider()
 
-# Interactive STEM Reference Sheet (Sidebar Feature)
-with st.sidebar.expander("🧪 **STEM Constants & Formulas**"):
-    st.markdown("""
-    **Physics Constants:**
-    * Speed of Light ($c$): $3 \\times 10^8\\ \\text{m/s}$
-    * Gravity ($g$): $9.8\\ \\text{m/s}^2$
-    * Planck's Constant ($h$): $6.626 \\times 10^{-34}\\ \\text{J}\\cdot\\text{s}$
-
-    **Math Identities:**
-    * $\\sin^2(\\theta) + \\cos^2(\\theta) = 1$
-    * $\\frac{d}{dx}(x^n) = n x^{n-1}$
-    """)
-
-st.sidebar.divider()
-
-# Session History Management
+# Session History Controls
 st.sidebar.subheader("🕒 Session History")
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -119,44 +103,57 @@ if "messages" not in st.session_state:
 history_count = len([m for m in st.session_state.messages if m["role"] == "user"])
 st.sidebar.info(f"Saved Queries: **{history_count}**")
 
-# Export Chat History Feature
-if st.session_state.messages:
-    chat_export_text = "\n\n".join([f"{m['role'].upper()}: {m['content']}" for m in st.session_state.messages])
-    st.sidebar.download_button(
-        label="📥 Download Study Notes",
-        data=chat_export_text,
-        file_name="PhysiMath_Study_Notes.txt",
-        mime="text/plain",
-        use_container_width=True
-    )
-
 if st.sidebar.button("🗑️ Clear Chat History", use_container_width=True):
     st.session_state.messages = []
     st.rerun()
 
-# 6. Adaptive Quiz & "Hint First" Mode
+# 5. FEATURE 1: Interactive STEM Formula & Constant Library
+with st.expander("🧪 **Interactive STEM Formula & Physics Constant Library**", expanded=False):
+    st.markdown("""
+    **Physics Constants:**
+    * Speed of Light ($c$): $3 \\times 10^8\\ \\text{m/s}$
+    * Gravitational Acceleration ($g$): $9.8\\ \\text{m/s}^2$
+    * Planck's Constant ($h$): $6.626 \\times 10^{-34}\\ \\text{J}\\cdot\\text{s}$
+
+    **Core Mathematics Formulas:**
+    * Trigonometric Identity: $\\sin^2(\\theta) + \\cos^2(\\theta) = 1$
+    * Derivative Power Rule: $\\frac{d}{dx}(x^n) = n x^{n-1}$
+    * Quadratic Formula: $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$
+    """)
+
+# 6. FEATURE 2: Mock Exam Timer
 with st.container(border=True):
-    st.subheader(":material/quiz: Adaptive Quick Quiz & Practice")
+    st.subheader("⏱️ **Mock Exam Practice & Timer**")
+    st.write("Test your speed and accuracy for competitive exams under timed conditions.")
+    
+    col_t1, col_t2 = st.columns([2, 1])
+    with col_t1:
+        timer_seconds = st.slider("Select Exam Countdown (Minutes):", 1, 15, 5) * 60
+    with col_t2:
+        if st.button("▶️ Start Timer", type="primary", use_container_width=True):
+            st.session_state.start_time = time.time()
+            st.session_state.timer_duration = timer_seconds
+
+    if "start_time" in st.session_state:
+        elapsed = time.time() - st.session_state.start_time
+        remaining = max(0, int(st.session_state.timer_duration - elapsed))
+        mins, secs = divmod(remaining, 60)
+        st.metric("⏳ Time Remaining:", f"{mins:02d}:{secs:02d}")
+        if remaining == 0:
+            st.warning("⏰ Time is up! Review your answers.")
+
+# 7. FEATURE 3: Step-by-Step "Hint First" Mode
+with st.container(border=True):
+    st.subheader("💡 **Step-by-Step Guidance Style**")
     guidance_mode = st.radio(
-        "Solution Style:",
-        ["Complete Step-by-Step Solution", "Hint First (Provide progressive hints before full solution)"],
+        "Select how PhysiMath AI should solve your problems:",
+        ["Complete Step-by-Step Solution", "Hint First (Give hints before full answer)"],
         horizontal=True
     )
 
-    col_q1, col_q2, col_q3 = st.columns(3)
-    with col_q1:
-        if st.button("🎲 TOLC-I Math Question", use_container_width=True):
-            st.session_state.preset_prompt = "Give me a practice calculus question typical for the TOLC-I entrance exam."
-    with col_q2:
-        if st.button("📝 Physics Mechanics", use_container_width=True):
-            st.session_state.preset_prompt = "Give me a high-yield physics mechanics problem with formulas."
-    with col_q3:
-        if st.button("📐 CSCA Logic Problem", use_container_width=True):
-            st.session_state.preset_prompt = "Give me a practice computer science logic problem for CSCA."
-
 st.divider()
 
-# 7. Gemini API Setup
+# 8. Gemini API Setup
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
     st.error("API Key missing! Please set GEMINI_API_KEY in your Streamlit secrets.")
@@ -168,17 +165,32 @@ system_instruction = f"""
 You are PhysiMath AI, an expert academic tutor created by Sukaina Batool.
 You help students with board exams (9th-12th ICS, FSC Pre-Medical, FSC Pre-Engineering) and entrance tests (SAT, TOLC-I, CEnT-S, CSCA, CA, ECAT, MDCAT).
 Active Target Mode: {exam_mode}.
-Guidance Preference: {guidance_mode}.
-Always format mathematical equations cleanly using LaTeX formatting where applicable. Keep explanations encouraging, structured, and easy to follow.
+Guidance Style: {guidance_mode}.
+Always format mathematical equations cleanly using LaTeX formatting. Keep explanations structured, clear, and easy to follow.
 """
 
-# 8. Render Chat History
+# 9. Render Chat History & PDF Download Button
 st.subheader("💬 Study Chat")
+
+# PDF Download Trigger
+if st.session_state.messages:
+    try:
+        pdf_bytes = generate_pdf(st.session_state.messages)
+        st.download_button(
+            label="📄 Download Study Notes as PDF",
+            data=pdf_bytes,
+            file_name="PhysiMath_Study_Notes.pdf",
+            mime="application/pdf",
+            type="primary"
+        )
+    except Exception as e:
+        st.caption("Add 'fpdf2' to requirements.txt to enable direct PDF downloads.")
+
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# 9. Gemini-Style `+` Attachment Drawer
+# 10. Gemini-Style Attachment Drawer
 image_input = None
 audio_bytes = None
 
@@ -201,17 +213,11 @@ with st.expander("➕ **Add Photo, Camera Snapshot, or Voice Query**", expanded=
         st.write("Click below to record your question:")
         audio_bytes = audio_recorder(text="Record Voice Query", icon_size="2x", key="voice_recorder")
 
-# Check for preset prompt triggers from pill buttons
-preset_text = st.session_state.pop("preset_prompt", None)
-
-# Chat Input Bar
+# Text Chat Input
 user_prompt = st.chat_input("Type your question or past paper query here...")
 
-# Handle Input Trigger
-active_input = user_prompt if user_prompt else preset_text
-
-if active_input or audio_bytes:
-    prompt_text = active_input if active_input else "Please analyze the uploaded problem (voice query received)."
+if user_prompt or audio_bytes:
+    prompt_text = user_prompt if user_prompt else "Please analyze the uploaded problem (voice query received)."
     
     st.chat_message("user").markdown(prompt_text)
     st.session_state.messages.append({"role": "user", "content": prompt_text})
@@ -236,7 +242,7 @@ if active_input or audio_bytes:
 
 st.divider()
 
-# 10. Student Feedback & Review
+# 11. Student Feedback & Review
 with st.container(border=True):
     st.subheader(":material/rate_review: Student Feedback & Review")
     st.markdown("### Is this app helpful?")
